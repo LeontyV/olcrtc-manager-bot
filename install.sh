@@ -36,6 +36,34 @@ if [ -z "$_olcrtc" ] || [ ! -f "$_olcrtc" ]; then
 fi
 echo -e "  ✓ olcrtc: ${GREEN}${_olcrtc}${NC}"
 
+# Auto-detect data directory
+_olcrtc_data="${OLCRTC_DATA:-}"
+if [ -z "$_olcrtc_data" ]; then
+    for candidate in \
+        /root/olcrtc/data \
+        /root/olcrtc-server/data; do
+        if [ -d "$candidate" ]; then
+            _olcrtc_data="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$_olcrtc_data" ]; then
+    # If binary is in /root/olcrtc/build/, data is likely in /root/olcrtc/data/
+    _olcrtc_parent="$(dirname "$(dirname "$_olcrtc")")"
+    _candidate="${_olcrtc_parent}/data"
+    if [ -d "$_candidate" ]; then
+        _olcrtc_data="$_candidate"
+    else
+        # Last resort: create data directory next to binary's project
+        _olcrtc_data="${_olcrtc_parent}/data"
+        mkdir -p "$_olcrtc_data"
+        echo -e "  ✓ data: ${YELLOW}created ${_olcrtc_data}${NC}"
+    fi
+fi
+echo -e "  ✓ data: ${GREEN}${_olcrtc_data}${NC}"
+
 # Check existing installation
 if [ -d "$INSTALL_DIR" ]; then
     echo ""
@@ -72,11 +100,12 @@ _token="${BOT_TOKEN:-}"
 _uid="${ALLOWED_USER_ID:-}"
 _olcrtc_data="${OLCRTC_DATA:-/root/olcrtc-server/data}"
 
-# Try to preserve existing .env values
+# Try to preserve existing .env token/uid, but update paths
 if [ -f "$INSTALL_DIR/.env" ]; then
     source "$INSTALL_DIR/.env" 2>/dev/null || true
     _token="${BOT_TOKEN:-${_token}}"
     _uid="${ALLOWED_USER_ID:-${_uid}}"
+    # OLCRTC paths always use freshly detected values
 fi
 
 if [ -z "$_token" ] && { [ -t 0 ] || [ -c /dev/tty ]; }; then
