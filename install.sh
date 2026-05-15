@@ -26,7 +26,9 @@ if ! command -v go >/dev/null 2>&1; then
     _need_go=true
 else
     _go_ver=$(go version 2>/dev/null | grep -oP 'go\d+\.\d+' | head -1 || true)
-    if [ -z "$_go_ver" ] || [ "$(printf '%s\n' "go1.22" "$_go_ver" | sort -V | head -1)" != "go1.22" ]; then
+    if [ -z "$_go_ver" ]; then
+        _need_go=true
+    elif ! printf '%s\n' "1.22" "$(echo "$_go_ver" | sed 's/^go//')" | sort -V -c 2>/dev/null; then
         _need_go=true
     fi
 fi
