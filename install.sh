@@ -20,7 +20,7 @@ _olcrtc="${OLCRTC_BIN:-}"
 if [ -z "$_olcrtc" ]; then
     for candidate in \
         /root/olcrtc/build/olcrtc-linux-amd64 \
-        /root/olcrtc-server/olcrtc \
+        /root/olcrtc/olcrtc \
         /usr/local/bin/olcrtc; do
         if [ -f "$candidate" ] && [ -x "$candidate" ]; then
             _olcrtc="$candidate"
@@ -41,7 +41,7 @@ _olcrtc_data="${OLCRTC_DATA:-}"
 if [ -z "$_olcrtc_data" ]; then
     for candidate in \
         /root/olcrtc/data \
-        /root/olcrtc-server/data; do
+        /root/olcrtc/data; do
         if [ -d "$candidate" ]; then
             _olcrtc_data="$candidate"
             break
@@ -98,7 +98,7 @@ echo -e "${YELLOW}[3/5]${NC} Setting up .env..."
 
 _token="${BOT_TOKEN:-}"
 _uid="${ALLOWED_USER_ID:-}"
-_olcrtc_data="${OLCRTC_DATA:-/root/olcrtc-server/data}"
+_olcrtc_data="${OLCRTC_DATA:-/root/olcrtc/data}"
 
 # Try to preserve existing .env token/uid, but update paths
 if [ -f "$INSTALL_DIR/.env" ]; then
