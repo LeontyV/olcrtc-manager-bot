@@ -89,10 +89,9 @@ Transport: datachannel
 ```
 
 ## Access Control
-- ALLOWED_USER_IDS: configurable via .env
-- ALLOWED_USER_IDS: Леонтий + до 5 друзей
-- Админ видит все конфиги, друзья — только свои
-- Только админ может удалять конфиги
+- ALLOWED_USER_ID: configurable via .env
+- Только один пользователь (Леонтий)
+- Никто другой не может управлять ботом
 
 ## Boundaries
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # olcrtc-manager-bot — one-command installer
-# Usage: curl -sSL https://raw.githubusercontent.com/LeontyV/olcrtc-manager-bot/main/install.sh | bash
+# Usage: curl -sSL https://.../install.sh | bash
+# Env vars (optional): BOT_TOKEN=... ALLOWED_USER_ID=...
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -9,13 +10,13 @@ OLCRTC_DIR="/root/olcrtc-server"
 
 # ── 1. Prerequisites ──────────────────────────────────
 echo -e "${YELLOW}[1/5]${NC} Checking prerequisites..."
-command -v python3 >/dev/null 2>&1 || { echo -e "${RED}python3 not found${NC}"; exit 1; }
+
+dpkg -s python3-venv >/dev/null 2>&1 || apt-get install -y -qq python3-venv
 command -v git >/dev/null 2>&1 || apt-get install -y -qq git
 command -v openssl >/dev/null 2>&1 || apt-get install -y -qq openssl
 
 if [ ! -f "$OLCRTC_DIR/olcrtc" ]; then
     echo -e "${RED}olcrtc binary not found at $OLCRTC_DIR/olcrtc${NC}"
-    echo "Build it first: https://github.com/LeontyV/olcrtc-manager-bot#readme"
     exit 1
 fi
 
@@ -27,22 +28,18 @@ git clone -q https://github.com/LeontyV/olcrtc-manager-bot.git "$INSTALL_DIR"
 # ── 3. Configure (.env) ───────────────────────────────
 echo -e "${YELLOW}[3/5]${NC} Setting up .env..."
 
-if [ -n "${BOT_TOKEN:-}" ]; then
-    _token="$BOT_TOKEN"
-elif [ -f "$INSTALL_DIR/.env" ]; then
-    _token=$(grep BOT_TOKEN "$INSTALL_DIR/.env" | cut -d'=' -f2)
-else
+# Use env vars if set, otherwise prompt via /dev/tty (works with curl|bash)
+_token="${BOT_TOKEN:-}"
+_uid="${ALLOWED_USER_ID:-}"
+
+if [ -z "$_token" ]; then
     echo -ne "Enter Telegram Bot Token (from @BotFather): "
-    read -r _token
+    read -r _token < /dev/tty
 fi
 
-if [ -n "${ALLOWED_USER_ID:-}" ]; then
-    _uid="$ALLOWED_USER_ID"
-elif [ -f "$INSTALL_DIR/.env" ]; then
-    _uid=$(grep ALLOWED_USER_ID "$INSTALL_DIR/.env" | cut -d'=' -f2)
-else
+if [ -z "$_uid" ]; then
     echo -ne "Enter your Telegram User ID: "
-    read -r _uid
+    read -r _uid < /dev/tty
 fi
 
 cat > "$INSTALL_DIR/.env" << EOF
