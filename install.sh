@@ -79,11 +79,13 @@ if [ -d "$INSTALL_DIR" ]; then
             echo "  Keeping existing installation, pulling updates..."
             cd "$INSTALL_DIR"
             git pull -q origin main 2>/dev/null || true
+            systemctl restart "$SERVICE_NAME" 2>/dev/null || true
         fi
     else
         echo "  Pulling updates (use env OVERWRITE=1 to force clean install)..."
         cd "$INSTALL_DIR"
         git pull -q origin main 2>/dev/null || true
+        systemctl restart "$SERVICE_NAME" 2>/dev/null || true
     fi
 fi
 
