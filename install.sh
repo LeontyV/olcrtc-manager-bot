@@ -1,26 +1,61 @@
 #!/bin/bash
 # olcrtc-manager-bot — one-command installer
 # Usage: curl -sSL https://.../install.sh | bash
-# Env vars (optional): BOT_TOKEN=... ALLOWED_USER_ID=... OLCRTC_BIN=...
+# Env vars (optional): BOT_TOKEN=... ALLOWED_USER_ID=...
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 INSTALL_DIR="/root/olcrtc-manager-bot"
 SERVICE_NAME="olcrtc-manager"
+OLCRTC_REPO_DIR="/root/olcrtc"
+OLCRTC_BIN_DEFAULT="${OLCRTC_REPO_DIR}/build/olcrtc-linux-amd64"
 
 # ── 1. Prerequisites ──────────────────────────────────
-echo -e "${YELLOW}[1/5]${NC} Checking prerequisites..."
+echo -e "${YELLOW}[1/7]${NC} Checking prerequisites..."
 
 dpkg -s python3-venv >/dev/null 2>&1 || apt-get install -y -qq python3-venv
 command -v git >/dev/null 2>&1 || apt-get install -y -qq git
 command -v openssl >/dev/null 2>&1 || apt-get install -y -qq openssl
+command -v wget >/dev/null 2>&1 || apt-get install -y -qq wget
 
-# Auto-detect olcrtc binary
+# ── 2. Install Go (if not present) ────────────────────
+echo -e "${YELLOW}[2/7]${NC} Checking Go..."
+
+_need_go=false
+if ! command -v go >/dev/null 2>&1; then
+    _need_go=true
+else
+    _go_ver=$(go version 2>/dev/null | grep -oP 'go\d+\.\d+' | head -1 || true)
+    if [ -z "$_go_ver" ] || [ "$(printf '%s\n' "go1.22" "$_go_ver" | sort -V | head -1)" != "go1.22" ]; then
+        _need_go=true
+    fi
+fi
+
+if $_need_go; then
+    GO_TAR="go1.26.0.linux-amd64.tar.gz"
+    echo "  Installing Go 1.26..."
+    wget -q "https://go.dev/dl/${GO_TAR}" -O "/tmp/${GO_TAR}"
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf "/tmp/${GO_TAR}"
+    rm -f "/tmp/${GO_TAR}"
+    export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+    # Persist PATH for this script and future systemd services
+    grep -q '/usr/local/go/bin' ~/.bashrc 2>/dev/null || \
+        echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' >> ~/.bashrc
+fi
+
+export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+echo -e "  ✓ Go: ${GREEN}$(go version)${NC}"
+
+# ── 3. Build olcrtc (if not found) ────────────────────
+echo -e "${YELLOW}[3/7]${NC} Checking olcrtc binary..."
+
 _olcrtc="${OLCRTC_BIN:-}"
-if [ -z "$_olcrtc" ]; then
+if [ -z "$_olcrtc" ] || [ ! -f "$_olcrtc" ]; then
+    # Check known paths
     for candidate in \
-        /root/olcrtc/build/olcrtc-linux-amd64 \
-        /root/olcrtc/olcrtc \
+        "$OLCRTC_BIN_DEFAULT" \
+        "${OLCRTC_REPO_DIR}/olcrtc" \
         /usr/local/bin/olcrtc; do
         if [ -f "$candidate" ] && [ -x "$candidate" ]; then
             _olcrtc="$candidate"
@@ -30,18 +65,50 @@ if [ -z "$_olcrtc" ]; then
 fi
 
 if [ -z "$_olcrtc" ] || [ ! -f "$_olcrtc" ]; then
-    echo -e "${RED}olcrtc binary not found.${NC}"
-    echo "  Set manually: OLCRTC_BIN=/path/to/olcrtc bash install.sh"
-    exit 1
+    echo "  Building olcrtc from source..."
+
+    # Install mage
+    if ! command -v mage >/dev/null 2>&1; then
+        echo "  Installing mage..."
+        go install github.com/magefile/mage@latest
+        export PATH=$PATH:$HOME/go/bin
+    fi
+
+    # Clone repo if not exists
+    if [ ! -d "$OLCRTC_REPO_DIR" ]; then
+        echo "  Cloning olcrtc..."
+        git clone -q https://github.com/openlibrecommunity/olcrtc --recurse-submodules "$OLCRTC_REPO_DIR"
+    else
+        echo "  Updating olcrtc repo..."
+        cd "$OLCRTC_REPO_DIR"
+        git pull -q origin main 2>/dev/null || true
+        git submodule update --init --recursive -q 2>/dev/null || true
+    fi
+
+    cd "$OLCRTC_REPO_DIR"
+    echo "  mage build..."
+    mage build
+
+    if [ -f "$OLCRTC_BIN_DEFAULT" ]; then
+        _olcrtc="$OLCRTC_BIN_DEFAULT"
+        # Also symlink for convenience
+        ln -sf "$OLCRTC_BIN_DEFAULT" "${OLCRTC_REPO_DIR}/olcrtc"
+    else
+        echo -e "${RED}Build failed — binary not found at ${OLCRTC_BIN_DEFAULT}${NC}"
+        exit 1
+    fi
 fi
+
 echo -e "  ✓ olcrtc: ${GREEN}${_olcrtc}${NC}"
 
-# Auto-detect data directory
+# ── 4. Data directory ─────────────────────────────────
+echo -e "${YELLOW}[4/7]${NC} Checking data directory..."
+
 _olcrtc_data="${OLCRTC_DATA:-}"
-if [ -z "$_olcrtc_data" ]; then
+if [ -z "$_olcrtc_data" ] || [ ! -d "$_olcrtc_data" ]; then
     for candidate in \
-        /root/olcrtc/data \
-        /root/olcrtc/data; do
+        "${OLCRTC_REPO_DIR}/data" \
+        /root/olcrtc-server/data; do
         if [ -d "$candidate" ]; then
             _olcrtc_data="$candidate"
             break
@@ -50,64 +117,38 @@ if [ -z "$_olcrtc_data" ]; then
 fi
 
 if [ -z "$_olcrtc_data" ]; then
-    # If binary is in /root/olcrtc/build/, data is likely in /root/olcrtc/data/
-    _olcrtc_parent="$(dirname "$(dirname "$_olcrtc")")"
-    _candidate="${_olcrtc_parent}/data"
-    if [ -d "$_candidate" ]; then
-        _olcrtc_data="$_candidate"
-    else
-        # Last resort: create data directory next to binary's project
-        _olcrtc_data="${_olcrtc_parent}/data"
-        mkdir -p "$_olcrtc_data"
-        echo -e "  ✓ data: ${YELLOW}created ${_olcrtc_data}${NC}"
-    fi
+    _olcrtc_data="${OLCRTC_REPO_DIR}/data"
+    mkdir -p "$_olcrtc_data"
+    echo -e "  ✓ data: ${YELLOW}created ${_olcrtc_data}${NC}"
+else
+    echo -e "  ✓ data: ${GREEN}${_olcrtc_data}${NC}"
 fi
-echo -e "  ✓ data: ${GREEN}${_olcrtc_data}${NC}"
 
-# Check existing installation
+# ── 5. Install/update bot ──────────────────────────────
+echo -e "${YELLOW}[5/7]${NC} Installing bot..."
+
 if [ -d "$INSTALL_DIR" ]; then
-    echo ""
-    echo -e "${YELLOW}⚠${NC} Already installed at $INSTALL_DIR"
-    # Only prompt if stdin is a TTY (not piped)
-    if [ -t 0 ] || [ -c /dev/tty ]; then
-        echo -ne "Update (keep profiles.db) or overwrite? [U/o]: "
-        read -r _choice < /dev/tty
-        if [ "${_choice,,}" = "o" ]; then
-            rm -rf "$INSTALL_DIR"
-            echo "  Removing old installation..."
-        else
-            echo "  Keeping existing installation, pulling updates..."
-            cd "$INSTALL_DIR"
-            git pull -q origin main 2>/dev/null || true
-            systemctl restart "$SERVICE_NAME" 2>/dev/null || true
-        fi
-    else
-        echo "  Pulling updates (use env OVERWRITE=1 to force clean install)..."
-        cd "$INSTALL_DIR"
-        git pull -q origin main 2>/dev/null || true
-        systemctl restart "$SERVICE_NAME" 2>/dev/null || true
-    fi
+    echo "  Already installed — pulling updates..."
+    cd "$INSTALL_DIR"
+    git pull -q origin main 2>/dev/null || true
+    systemctl restart "$SERVICE_NAME" 2>/dev/null || true
 fi
 
-# ── 2. Clone ──────────────────────────────────────────
-echo -e "${YELLOW}[2/5]${NC} Installing..."
 if [ ! -d "$INSTALL_DIR" ]; then
     git clone -q https://github.com/LeontyV/olcrtc-manager-bot.git "$INSTALL_DIR"
 fi
 
-# ── 3. Configure (.env) ───────────────────────────────
-echo -e "${YELLOW}[3/5]${NC} Setting up .env..."
+# ── 6. Configure + Python deps ─────────────────────────
+echo -e "${YELLOW}[6/7]${NC} Setting up .env and Python..."
 
 _token="${BOT_TOKEN:-}"
 _uid="${ALLOWED_USER_ID:-}"
-_olcrtc_data="${OLCRTC_DATA:-/root/olcrtc/data}"
 
-# Try to preserve existing .env token/uid, but update paths
+# Preserve existing .env if present, but refresh paths
 if [ -f "$INSTALL_DIR/.env" ]; then
     source "$INSTALL_DIR/.env" 2>/dev/null || true
     _token="${BOT_TOKEN:-${_token}}"
     _uid="${ALLOWED_USER_ID:-${_uid}}"
-    # OLCRTC paths always use freshly detected values
 fi
 
 if [ -z "$_token" ] && { [ -t 0 ] || [ -c /dev/tty ]; }; then
@@ -133,16 +174,14 @@ OLCRTC_DATA=${_olcrtc_data}
 EOF
 chmod 600 "$INSTALL_DIR/.env"
 
-# ── 4. Python venv + deps ─────────────────────────────
-echo -e "${YELLOW}[4/5]${NC} Installing Python dependencies..."
 cd "$INSTALL_DIR"
 if [ ! -d venv ]; then
     python3 -m venv venv
 fi
 ./venv/bin/pip install -q -r requirements.txt
 
-# ── 5. systemd service ────────────────────────────────
-echo -e "${YELLOW}[5/5]${NC} Installing systemd service..."
+# ── 7. systemd service ────────────────────────────────
+echo -e "${YELLOW}[7/7]${NC} Installing systemd service..."
 
 cat > /etc/systemd/system/olcrtc-manager.service << UNIT
 [Unit]
@@ -154,6 +193,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
+Environment=PATH=/usr/local/go/bin:/root/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=${INSTALL_DIR}/venv/bin/python ${INSTALL_DIR}/bot.py
 Restart=always
 RestartSec=10
