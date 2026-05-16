@@ -11,7 +11,7 @@ for unit in $(systemctl list-units --all --no-legend 'olcrtc-*' 2>/dev/null | aw
     [[ "$unit" == olcrtc-wrapper* ]] && continue
 
     # Get last 15 log lines since 2 minutes ago
-    ERRORS=$(journalctl --no-pager -u "$unit" --since "2 min ago" 2>/dev/null | grep -iE "reconnect limit reached|fatal|panic|context canceled.*reconnect|signalEnded|shutting down" || true)
+    ERRORS=$(journalctl --no-pager -u "$unit" --since "2 min ago" 2>/dev/null | grep -iE "reconnect limit reached|fatal|panic|context canceled.*reconnect|signalEnded|shutting down|tearing down" || true)
 
     if [ -n "$ERRORS" ]; then
         echo "[watchdog] $unit: errors detected, restarting..."
