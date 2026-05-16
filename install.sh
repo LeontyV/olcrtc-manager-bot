@@ -197,7 +197,26 @@ UNIT
 
 systemctl daemon-reload
 
-# Only start if tokens are real (not placeholders)
+# Also install the watchdog (checks all olcrtc-* services every 15s)
+cat > /etc/systemd/system/olcrtc-watchdog-loop.service << UNIT
+[Unit]
+Description=olcrtc watchdog — checks every 15s
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/olcrtc-watchdog-loop.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable --now olcrtc-watchdog-loop 2>/dev/null || true
+
+# Only start bot if tokens are real (not placeholders)
 if [[ "$_token" == "ВАШ_ТОКЕН_БОТА" ]] || [[ "$_uid" == "ВАШ_TELEGRAM_ID" ]]; then
     echo ""
     echo -e "${YELLOW}⚠ Токен бота и Telegram ID не заданы.${NC}"
@@ -210,6 +229,8 @@ if [[ "$_token" == "ВАШ_ТОКЕН_БОТА" ]] || [[ "$_uid" == "ВАШ_TELE
 else
     systemctl enable --now "$SERVICE_NAME"
 fi
+
+echo -e "  ✓ watchdog-loop: ${GREEN}active${NC}"
 
 # ── Done ──────────────────────────────────────────────
 sleep 2
