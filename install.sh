@@ -140,6 +140,8 @@ if [ ! -d "$INSTALL_DIR" ]; then
     git clone -q https://github.com/LeontyV/olcrtc-manager-bot.git "$INSTALL_DIR"
 fi
 
+chmod +x "$INSTALL_DIR/olcrtc-wrapper.sh"
+
 # ── 6. Configure + Python deps ─────────────────────────
 echo -e "${YELLOW}[6/7]${NC} Setting up .env and Python..."
 
