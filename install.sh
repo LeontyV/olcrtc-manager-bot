@@ -153,20 +153,9 @@ if [ -f "$INSTALL_DIR/.env" ]; then
     _uid="${ALLOWED_USER_ID:-${_uid}}"
 fi
 
-if [ -z "$_token" ] && { [ -t 0 ] || [ -c /dev/tty ]; }; then
-    echo -ne "Enter Telegram Bot Token (from @BotFather): "
-    read -r _token < /dev/tty
-fi
-if [ -z "$_uid" ] && { [ -t 0 ] || [ -c /dev/tty ]; }; then
-    echo -ne "Enter your Telegram User ID: "
-    read -r _uid < /dev/tty
-fi
-
-if [ -z "$_token" ] || [ -z "$_uid" ]; then
-    echo -e "${RED}Missing BOT_TOKEN or ALLOWED_USER_ID${NC}"
-    echo "  Set: BOT_TOKEN=... ALLOWED_USER_ID=... bash install.sh"
-    exit 1
-fi
+# If tokens are missing, use placeholders — user fills them later
+if [ -z "$_token" ]; then _token="ВАШ_ТОКЕН_БОТА"; fi
+if [ -z "$_uid" ]; then _uid="ВАШ_TELEGRAM_ID"; fi
 
 cat > "$INSTALL_DIR/.env" << EOF
 BOT_TOKEN=${_token}
@@ -205,7 +194,20 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now "$SERVICE_NAME"
+
+# Only start if tokens are real (not placeholders)
+if [[ "$_token" == "ВАШ_ТОКЕН_БОТА" ]] || [[ "$_uid" == "ВАШ_TELEGRAM_ID" ]]; then
+    echo ""
+    echo -e "${YELLOW}⚠ Токен бота и Telegram ID не заданы.${NC}"
+    echo ""
+    echo "  Открой .env и заполни поля:"
+    echo -e "    ${GREEN}nano ${INSTALL_DIR}/.env${NC}"
+    echo ""
+    echo "  После этого запусти бота:"
+    echo -e "    ${GREEN}systemctl start ${SERVICE_NAME}${NC}"
+else
+    systemctl enable --now "$SERVICE_NAME"
+fi
 
 # ── Done ──────────────────────────────────────────────
 sleep 2
@@ -214,7 +216,9 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     echo -e "  Bot: systemctl status $SERVICE_NAME"
     echo -e "  Telegram: /start"
 else
-    echo -e "\n${RED}✗ Bot failed to start${NC}"
-    journalctl --no-pager -u "$SERVICE_NAME" -n 10
-    exit 1
+    if [[ "$_token" != "ВАШ_ТОКЕН_БОТА" ]] && [[ "$_uid" != "ВАШ_TELEGRAM_ID" ]]; then
+        echo -e "\n${RED}✗ Bot failed to start${NC}"
+        journalctl --no-pager -u "$SERVICE_NAME" -n 10
+        exit 1
+    fi
 fi
