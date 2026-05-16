@@ -111,15 +111,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={OLCRTC_BIN} \\
-  -mode srv \\
-  -carrier {carrier} \\
-  -id "{room_id}" \\
-  -key "{key_hex}" \\
-  -client-id "{client_id}" \\
-  -transport {transport} \\
-  -link direct \\
-  -dns {OLCRTC_DNS} \\
+ExecStart=/root/olcrtc-manager-bot/olcrtc-wrapper.sh {OLCRTC_BIN} \\\
+  -mode srv \\\
+  -carrier {carrier} \\\
+  -id "{room_id}" \\\
+  -key "{key_hex}" \\\
+  -client-id "{client_id}" \\\
+  -transport {transport} \\\
+  -link direct \\\
+  -dns {OLCRTC_DNS} \\\
   -data {OLCRTC_DATA}{extra_flags}
 Restart=always
 RestartSec=10
