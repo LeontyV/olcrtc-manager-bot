@@ -92,43 +92,49 @@ async def create_service(profile: dict) -> tuple[bool, str]:
     service_name = f"olcrtc-{client_id}"
     unit_path = f"/etc/systemd/system/{service_name}.service"
 
-    # Transport-specific flags
-    extra_flags = ""
+    flag_lines = []
     if transport == "vp8channel":
-        extra_flags = " \\\n  -vp8-fps 60 \\\n  -vp8-batch 64"
+        flag_lines = ["  -vp8-fps 60", "  -vp8-batch 64"]
     elif transport == "seichannel":
-        extra_flags = " \\\n  -fps 60 \\\n  -batch 64 \\\n  -frag 900 \\\n  -ack-ms 2000"
+        flag_lines = ["  -fps 60", "  -batch 64", "  -frag 900", "  -ack-ms 2000"]
     elif transport == "videochannel":
-        extra_flags = (
-            " \\\n  -video-codec qrcode \\\n  -video-w 1080 \\\n  -video-h 1080 \\\n"
-            "  -video-fps 60 \\\n  -video-bitrate 5000k \\\n  -video-hw none"
-        )
+        flag_lines = [
+            "  -video-codec qrcode", "  -video-w 1080", "  -video-h 1080",
+            "  -video-fps 60", "  -video-bitrate 5000k", "  -video-hw none",
+        ]
 
-    unit = f"""[Unit]
-Description=OLCRTC tunnel for {name} ({client_id})
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/root/olcrtc-manager-bot/olcrtc-wrapper.sh {OLCRTC_BIN} \\\
-  -mode srv \\\
-  -carrier {carrier} \\\
-  -id "{room_id}" \\\
-  -key "{key_hex}" \\\
-  -client-id "{client_id}" \\\
-  -transport {transport} \\\
-  -link direct \\\
-  -dns {OLCRTC_DNS} \\\
-  -data {OLCRTC_DATA}{extra_flags}
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-"""
+    lines = [
+        "[Unit]",
+        f"Description=OLCRTC tunnel for {name} ({client_id})",
+        "After=network-online.target",
+        "Wants=network-online.target",
+        "",
+        "[Service]",
+        "Type=simple",
+        f"ExecStart=/root/olcrtc-manager-bot/olcrtc-wrapper.sh {OLCRTC_BIN} \\",
+        "  -mode srv \\",
+        f"  -carrier {carrier} \\",
+        f'  -id "{room_id}" \\',
+        f'  -key "{key_hex}" \\',
+        f'  -client-id "{client_id}" \\',
+        f"  -transport {transport} \\",
+        "  -link direct \\",
+        f"  -dns {OLCRTC_DNS} \\",
+        f"  -data {OLCRTC_DATA}" + (" \\" if flag_lines else ""),
+    ]
+    for i, flag in enumerate(flag_lines):
+        suffix = " \\" if i < len(flag_lines) - 1 else ""
+        lines.append(flag + suffix)
+    lines += [
+        "Restart=always",
+        "RestartSec=10",
+        "StandardOutput=journal",
+        "StandardError=journal",
+        "",
+        "[Install]",
+        "WantedBy=multi-user.target",
+    ]
+    unit = "\n".join(lines)
 
     def _sync():
         try:
