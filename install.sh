@@ -129,18 +129,16 @@ fi
 # ── 5. Install/update bot ──────────────────────────────
 echo -e "${YELLOW}[5/7]${NC} Installing bot..."
 
-if [ -d "$INSTALL_DIR" ]; then
+if [ ! -d "$INSTALL_DIR" ]; then
+    git clone -q https://github.com/LeontyV/olcrtc-manager-bot.git "$INSTALL_DIR"
+else
     echo "  Already installed — pulling updates..."
     cd "$INSTALL_DIR"
     git pull -q origin main 2>/dev/null || true
-    systemctl restart "$SERVICE_NAME" 2>/dev/null || true
-fi
-
-if [ ! -d "$INSTALL_DIR" ]; then
-    git clone -q https://github.com/LeontyV/olcrtc-manager-bot.git "$INSTALL_DIR"
 fi
 
 chmod +x "$INSTALL_DIR/olcrtc-wrapper.sh"
+chmod +x "$INSTALL_DIR/olcrtc-watchdog-loop.sh"
 
 # ── 6. Configure + Python deps ─────────────────────────
 echo -e "${YELLOW}[6/7]${NC} Setting up .env and Python..."
@@ -214,7 +212,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 UNIT
-systemctl enable --now olcrtc-watchdog-loop 2>/dev/null || true
+
+# Restart watchdog if already running, else enable+start
+if systemctl is-active --quiet olcrtc-watchdog-loop 2>/dev/null; then
+    systemctl restart olcrtc-watchdog-loop
+else
+    systemctl enable --now olcrtc-watchdog-loop
+fi
 
 # Only start bot if tokens are real (not placeholders)
 if [[ "$_token" == "ВАШ_ТОКЕН_БОТА" ]] || [[ "$_uid" == "ВАШ_TELEGRAM_ID" ]]; then
